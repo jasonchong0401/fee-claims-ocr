@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>费用报销系统 - 登录</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f0f4f8;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .login-container {
+    width: 100%;
+    max-width: 420px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.08);
+    padding: 44px 36px 36px;
+    text-align: center;
+  }
+
+  .logo {
+    width: 56px; height: 56px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 28px;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 22px; font-weight: 700; color: #1e293b;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 13px; color: #94a3b8; margin-bottom: 32px;
+  }
+
+  .field {
+    text-align: left; margin-bottom: 20px;
+  }
+  .field label {
+    display: block; font-size: 13px; font-weight: 500;
+    color: #475569; margin-bottom: 6px;
+  }
+  .field input {
+    width: 100%; height: 44px;
+    padding: 0 14px;
+    border: 1px solid #d1d5db; border-radius: 10px;
+    font-size: 15px; color: #1e293b;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+  .field input::placeholder { color: #cbd5e1; }
+
+  .btn-login {
+    width: 100%; height: 46px;
+    margin-top: 8px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff;
+    border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+  }
+  .btn-login:hover {
+    box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    transform: translateY(-1px);
+  }
+  .btn-login:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .spinner {
+    display: none; width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .6s linear infinite;
+    margin-right: 8px; vertical-align: middle;
+  }
+  .spinner.show { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    display: none;
+    margin-top: 16px; padding: 10px 14px;
+    background: #fef2f2; color: #dc2626;
+    border: 1px solid #fecaca; border-radius: 8px;
+    font-size: 13px; font-weight: 500; text-align: left;
+  }
+  .error-msg.show { display: block; }
+
+  .footer {
+    margin-top: 24px; font-size: 12px; color: #94a3b8;
+  }
+</style>
+</head>
+<body>
+
+<div class="login-container">
+  <div class="logo">📄</div>
+  <h1>费用报销 OCR 系统</h1>
+  <p class="subtitle">请登录以继续使用</p>
+
+  <div class="field">
+    <label>用户名</label>
+    <input type="text" id="username" placeholder="请输入用户名" autocomplete="username" autofocus>
+  </div>
+
+  <div class="field">
+    <label>密码</label>
+    <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password">
+  </div>
+
+  <button class="btn-login" id="btnLogin" onclick="doLogin()">
+    <span class="spinner" id="spinner"></span> 登 录
+  </button>
+
+  <div class="error-msg" id="errorMsg"></div>
+  <div class="footer">首次使用？首个注册用户自动成为管理员</div>
+</div>
+
+<script>
+const API_BASE = '';
+
+async function doLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value.trim();
+
+  if (!username || !password) {
+    showError('请填写用户名和密码');
+    return;
+  }
+
+  setLoading(true);
+  hideError();
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const json = await resp.json();
+
+    if (resp.ok && json.code === 0) {
+      // 存储 token 和用户信息
+      localStorage.setItem('token', json.data.access_token);
+      localStorage.setItem('username', json.data.username);
+      localStorage.setItem('role', json.data.role);
+
+      // 跳转到上传页面
+      window.location.href = '/upload';
+    } else {
+      showError(json.msg || json.detail || '登录失败');
+    }
+  } catch (err) {
+    showError(`网络异常: ${err.message}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(loading) {
+  document.getElementById('btnLogin').disabled = loading;
+  document.getElementById('spinner').classList.toggle('show', loading);
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+function hideError() {
+  document.getElementById('errorMsg').classList.remove('show');
+}
+
+// Enter key to submit
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

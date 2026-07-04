@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>费用报销 OCR 识别系统</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f0f4f8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 12px;
+  }
+
+  /* ── Top Nav Bar ── */
+  .top-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 52px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+  }
+  .top-bar .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700; color: #1e293b;
+  }
+  .top-bar .brand .dot {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px;
+  }
+
+  .top-bar .right-section {
+    display: flex; align-items: center; gap: 6px;
+    position: relative;
+  }
+  .top-bar .user-name {
+    font-size: 13px; font-weight: 500; color: #334155;
+    cursor: default;
+  }
+  .top-bar .role-tag {
+    font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .role-tag.admin { background: #dbeafe; color: #2563eb; }
+  .role-tag.user  { background: #f0fdf4; color: #16a34a; }
+
+  /* ── Gear Button ── */
+  .btn-gear {
+    width: 32px; height: 32px;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    background: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: #64748b;
+    transition: all .15s;
+    margin-left: 4px;
+  }
+  .btn-gear:hover { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
+
+  /* ── Dropdown ── */
+  .dropdown {
+    display: none; position: absolute;
+    top: 42px; right: 0;
+    min-width: 160px;
+    background: #fff; border: 1px solid #e2e8f0;
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    overflow: hidden; z-index: 200;
+  }
+  .dropdown.show { display: block; }
+  .dropdown .item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 10px 16px;
+    border: none; background: none;
+    font-size: 13px; color: #334155; cursor: pointer;
+    text-align: left;
+    transition: background .1s;
+  }
+  .dropdown .item:hover { background: #f8fafc; }
+  .dropdown .item.danger { color: #dc2626; }
+  .dropdown .item.danger:hover { background: #fef2f2; }
+  .dropdown .divider { height: 1px; background: #e2e8f0; margin: 4px 0; }
+
+  /* ── Main Content ── */
+  .container {
+    margin-top: 64px;
+    max-width: 680px;
+    width: 100%;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 2px 24px rgba(0,0,0,0.06);
+    padding: 36px 32px 40px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e8ecf1;
+  }
+  .header .icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 22px;
+  }
+  .header h1 { font-size: 22px; font-weight: 700; color: #1e293b; }
+  .header p  { font-size: 13px; color: #64748b; margin-top: 2px; }
+
+  /* ── Upload Zone ── */
+  .upload-zone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    background: #fafbfc;
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: #3b82f6;
+    background: #eff6ff;
+  }
+  .upload-zone.has-image { border-style: solid; border-color: #3b82f6; padding: 16px; }
+  .upload-zone .icon-upload { font-size: 40px; margin-bottom: 12px; }
+  .upload-zone .hint { font-size: 15px; color: #334155; font-weight: 500; }
+  .upload-zone .sub   { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+  .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* ── Image Preview ── */
+  .preview-row {
+    display: none;
+    align-items: center; gap: 16px;
+    justify-content: center;
+  }
+  .preview-row.show { display: flex; }
+  .preview-row img {
+    max-height: 180px; max-width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+    object-fit: contain;
+  }
+  .preview-row .change-btn {
+    flex-shrink: 0;
+    background: #fff; color: #3b82f6;
+    border: 1px solid #3b82f6;
+    border-radius: 6px; padding: 8px 16px;
+    font-size: 13px; cursor: pointer;
+    transition: all .15s;
+  }
+  .preview-row .change-btn:hover { background: #eff6ff; }
+
+  /* ── Status Message ── */
+  .status-msg {
+    display: none;
+    margin-top: 14px; padding: 10px 14px;
+    border-radius: 8px; font-size: 13px; font-weight: 500;
+  }
+  .status-msg.show   { display: block; }
+  .status-msg.info   { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+  .status-msg.success{ background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .status-msg.error  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+  /* ── Form Card ── */
+  .form-card {
+    margin-top: 24px;
+    border: 1px solid #e8ecf1;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .form-card .card-header {
+    background: #f8fafc;
+    padding: 14px 20px;
+    font-size: 15px; font-weight: 600;
+    color: #1e293b;
+    border-bottom: 1px solid #e8ecf1;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .form-card .card-header .dot {
+    width: 8px; height: 8px;
+    background: #3b82f6; border-radius: 50%;
+  }
+  .form-card .card-body { padding: 20px; }
+
+  /* ── Form Fields ── */
+  .field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 500px) { .field-group { grid-template-columns: 1fr; } }
+
+  .field {
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .field.full { grid-column: 1 / -1; }
+  .field label {
+    font-size: 13px; font-weight: 500; color: #475569;
+  }
+  .field label .required { color: #ef4444; }
+  .field input, .field select {
+    height: 40px; padding: 0 12px;
+    border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 14px; color: #1e293b;
+    background: #fff;
+    transition: border-color .15s, box-shadow .15s;
+    outline: none;
+  }
+  .field input:focus, .field select:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+  .field input.modified {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.08);
+  }
+
+  /* ── Buttons ── */
+  .btn-row {
+    display: flex; gap: 12px; margin-top: 24px;
+  }
+  .btn {
+    flex: 1; height: 44px;
+    border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: all .15s;
+  }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    transform: translateY(-1px);
+  }
+  .btn-outline {
+    background: #fff; color: #475569;
+    border: 1px solid #d1d5db;
+  }
+  .btn-outline:hover:not(:disabled) { background: #f8fafc; }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: none;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    margin-right: 8px;
+  }
+  .spinner.show { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Raw Text ── */
+  .raw-text-toggle {
+    font-size: 12px; color: #64748b; cursor: pointer;
+    margin-top: 10px; user-select: none;
+  }
+  .raw-text-toggle:hover { color: #3b82f6; }
+  .raw-text {
+    display: none; margin-top: 8px; padding: 10px 12px;
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 6px; font-size: 12px; color: #64748b;
+    white-space: pre-wrap; max-height: 160px; overflow-y: auto;
+    font-family: "SF Mono", "Fira Code", monospace;
+  }
+  .raw-text.show { display: block; }
+
+  .task-uuid-display {
+    display: none; font-size: 11px; color: #94a3b8; margin-top: 12px;
+  }
+  .task-uuid-display.show { display: block; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 300;
+    background: rgba(15,23,42,0.4);
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: #fff; border-radius: 14px;
+    padding: 28px 30px 24px;
+    width: 380px; max-width: 90vw;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.15);
+  }
+  .modal h3 { font-size: 17px; color: #1e293b; margin-bottom: 20px; }
+  .modal .field { margin-bottom: 14px; }
+  .modal .btn-row { margin-top: 20px; }
+  .modal .close-btn {
+    position: absolute; top: 14px; right: 18px;
+    background: none; border: none; font-size: 20px;
+    color: #94a3b8; cursor: pointer;
+  }
+  .modal .close-btn:hover { color: #475569; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ Top Nav Bar ═══════════ -->
+<div class="top-bar">
+  <div class="brand">
+    <span class="dot">📄</span> 费用报销系统
+  </div>
+  <div class="right-section">
+    <span class="user-name" id="displayUsername">-</span>
+    <span class="role-tag" id="displayRole"></span>
+    <button class="btn-gear" id="btnGear" onclick="toggleDropdown()" title="设置">⚙</button>
+    <div class="dropdown" id="dropdown">
+      <button class="item" onclick="openProfileModal()">👤 个人信息</button>
+      <button class="item" onclick="openPasswordModal()">🔒 修改密码</button>
+      <div class="divider"></div>
+      <button class="item danger" onclick="logout()">🚪 退出登录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ Profile Modal ═══════════ -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal">
+    <h3>个人信息</h3>
+    <div class="field"><label>用户名</label><input type="text" id="pfUsername" disabled></div>
+    <div class="field"><label>工号</label><input type="text" id="pfEmployeeId" disabled></div>
+    <div class="field"><label>角色</label><input type="text" id="pfRole" disabled></div>
+    <div class="field"><label>部门</label><input type="text" id="pfDept"></div>
+    <div class="field"><label>邮箱</label><input type="email" id="pfEmail"></div>
+    <div class="field"><label>入职日期</label><input type="text" id="pfStartDate" disabled></div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closeProfileModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveProfile()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ Password Modal ═══════════ -->
+<div class="modal-overlay" id="passwordModal">
+  <div class="modal">
+    <h3>修改密码</h3>
+    <div class="field"><label>旧密码</label><input type="password" id="pwOld" placeholder="请输入旧密码"></div>
+    <div class="field"><label>新密码</label><input type="password" id="pwNew" placeholder="至少6位"></div>
+    <div class="field"><label>确认新密码</label><input type="password" id="pwConfirm" placeholder="再次输入新密码"></div>
+    <p class="status-msg" id="pwMsg"></p>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closePasswordModal()">取消</button>
+      <button class="btn btn-primary" onclick="changePassword()">确认修改</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ Main Content ═══════════ -->
+<div class="container">
+
+  <div class="header">
+    <div class="icon">📷</div>
+    <div>
+      <h1>票据上传 & OCR 识别</h1>
+      <p>上传票据 → 自动识别 → 确认入库</p>
+    </div>
+  </div>
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="uploadZone">
+    <div class="default-state" id="defaultState">
+      <div class="icon-upload">📤</div>
+      <div class="hint">点击或拖拽上传票据图片</div>
+      <div class="sub">支持 JPG / PNG，单文件 ≤ 5MB</div>
+    </div>
+    <div class="preview-row" id="previewRow">
+      <img id="previewImg" src="" alt="票据预览">
+      <button class="change-btn" onclick="document.getElementById('fileInput').click()">更换图片</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/jpeg,image/png">
+  </div>
+
+  <!-- Status -->
+  <div class="status-msg" id="statusMsg"></div>
+
+  <!-- OCR Raw Text -->
+  <div class="raw-text-toggle" id="rawToggle" onclick="toggleRawText()">▸ 查看 OCR 原始文本</div>
+  <div class="raw-text" id="rawText"></div>
+
+  <!-- Task UUID -->
+  <div class="task-uuid-display" id="taskUuidDisplay"></div>
+
+  <!-- Editable Form -->
+  <div class="form-card" id="formCard" style="display:none;">
+    <div class="card-header">
+      <span class="dot"></span> 识别信息（可手动修改）
+    </div>
+    <div class="card-body">
+      <div class="field-group">
+        <div class="field">
+          <label><span class="required">*</span> 报销人</label>
+          <input type="text" id="fApplicant" placeholder="姓名 / 工号">
+        </div>
+        <div class="field">
+          <label><span class="required">*</span> 报销类型</label>
+          <select id="fExpenseType">
+            <option value="">请选择</option>
+            <option>交通</option>
+            <option>餐饮</option>
+            <option>住宿</option>
+            <option>办公用品</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label><span class="required">*</span> 商户名称</label>
+          <input type="text" id="fMerchant" placeholder="消费商户">
+        </div>
+        <div class="field">
+          <label><span class="required">*</span> 费用总额 (元)</label>
+          <input type="number" id="fAmount" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="field">
+          <label>参与人数</label>
+          <input type="number" id="fHeadCount" placeholder="1" min="1" value="1">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="resetForm()">清空重置</button>
+        <button class="btn btn-primary" id="btnSubmit" onclick="submitToDB()" disabled>
+          <span class="spinner" id="spinnerSubmit"></span> 确认提交到数据库
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Auth Guard ──
+const TOKEN = localStorage.getItem('token');
+const USERNAME = localStorage.getItem('username');
+const ROLE = localStorage.getItem('role');
+
+if (!TOKEN) { window.location.href = '/'; }
+
+// Init top bar
+document.getElementById('displayUsername').textContent = USERNAME || '-';
+const tag = document.getElementById('displayRole');
+tag.textContent = ROLE || '';
+tag.className = 'role-tag ' + (ROLE === 'admin' ? 'admin' : 'user');
+
+// ── Dropdown ──
+function toggleDropdown() {
+  document.getElementById('dropdown').classList.toggle('show');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.right-section')) {
+    document.getElementById('dropdown').classList.remove('show');
+  }
+});
+
+// ── Profile Modal ──
+async function openProfileModal() {
+  document.getElementById('dropdown').classList.remove('show');
+  try {
+    const resp = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${TOKEN}` } });
+    const json = await resp.json();
+    if (json.code === 0 && json.data) {
+      const d = json.data;
+      document.getElementById('pfUsername').value = d.username || '';
+      document.getElementById('pfEmployeeId').value = d.employee_id || '';
+      document.getElementById('pfRole').value = d.role || '';
+      document.getElementById('pfDept').value = d.department || '';
+      document.getElementById('pfEmail').value = d.email || '';
+      document.getElementById('pfStartDate').value = d.start_date || '';
+    }
+  } catch (e) { /* ignore */ }
+  document.getElementById('profileModal').classList.add('show');
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal').classList.remove('show');
+}
+
+async function saveProfile() {
+  const body = {
+    email: document.getElementById('pfEmail').value.trim() || null,
+    department: document.getElementById('pfDept').value.trim() || null,
+  };
+  try {
+    const resp = await fetch('/api/me', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json();
+    if (json.code === 0) {
+      closeProfileModal();
+      showStatus('success', '个人信息已更新');
+    }
+  } catch (e) { showStatus('error', '保存失败'); }
+}
+
+// ── Password Modal ──
+function openPasswordModal() {
+  document.getElementById('dropdown').classList.remove('show');
+  document.getElementById('pwOld').value = '';
+  document.getElementById('pwNew').value = '';
+  document.getElementById('pwConfirm').value = '';
+  document.getElementById('pwMsg').className = 'status-msg';
+  document.getElementById('pwMsg').textContent = '';
+  document.getElementById('passwordModal').classList.add('show');
+}
+
+function closePasswordModal() {
+  document.getElementById('passwordModal').classList.remove('show');
+}
+
+async function changePassword() {
+  const oldPw = document.getElementById('pwOld').value;
+  const newPw = document.getElementById('pwNew').value;
+  const confirm = document.getElementById('pwConfirm').value;
+  const msgEl = document.getElementById('pwMsg');
+
+  if (!oldPw || !newPw) { msgEl.className = 'status-msg show error'; msgEl.textContent = '请填写所有字段'; return; }
+  if (newPw.length < 6) { msgEl.className = 'status-msg show error'; msgEl.textContent = '新密码至少6位'; return; }
+  if (newPw !== confirm) { msgEl.className = 'status-msg show error'; msgEl.textContent = '两次新密码不一致'; return; }
+
+  try {
+    const resp = await fetch('/api/me/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ old_password: oldPw, new_password: newPw }),
+    });
+    const json = await resp.json();
+    if (json.code === 0) {
+      msgEl.className = 'status-msg show success'; msgEl.textContent = '密码修改成功';
+      setTimeout(closePasswordModal, 1200);
+    } else {
+      msgEl.className = 'status-msg show error'; msgEl.textContent = json.msg || '修改失败';
+    }
+  } catch (e) { msgEl.className = 'status-msg show error'; msgEl.textContent = '网络异常'; }
+}
+
+// ── Logout ──
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('username');
+  localStorage.removeItem('role');
+  window.location.href = '/';
+}
+
+// ── State ──
+let currentTaskUuid = null;
+let originalOcrData = {};
+
+// ── DOM refs ──
+const uploadZone   = document.getElementById('uploadZone');
+const defaultState = document.getElementById('defaultState');
+const previewRow   = document.getElementById('previewRow');
+const previewImg   = document.getElementById('previewImg');
+const fileInput    = document.getElementById('fileInput');
+const statusMsg    = document.getElementById('statusMsg');
+const rawToggle    = document.getElementById('rawToggle');
+const rawText      = document.getElementById('rawText');
+const taskUuidDisp = document.getElementById('taskUuidDisplay');
+const formCard     = document.getElementById('formCard');
+const btnSubmit    = document.getElementById('btnSubmit');
+const spinnerSubmit= document.getElementById('spinnerSubmit');
+
+const fields = {
+  applicant:    document.getElementById('fApplicant'),
+  expense_type: document.getElementById('fExpenseType'),
+  merchant:     document.getElementById('fMerchant'),
+  total_amount: document.getElementById('fAmount'),
+  head_count:   document.getElementById('fHeadCount'),
+};
+
+// ── File Input ──
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+});
+
+// ── Drag & Drop ──
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave',() => { uploadZone.classList.remove('drag-over'); });
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+async function handleFile(file) {
+  const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+  if (!validTypes.includes(file.type)) { showStatus('error', '仅支持 JPG / PNG 格式'); return; }
+  if (file.size > 5 * 1024 * 1024) { showStatus('error', '文件大小超过 5MB 限制'); return; }
+
+  const url = URL.createObjectURL(file);
+  previewImg.src = url;
+  defaultState.style.display = 'none';
+  previewRow.classList.add('show');
+  uploadZone.classList.add('has-image');
+  formCard.style.display = 'block';
+  hideStatus(); hideRaw();
+  taskUuidDisp.classList.remove('show');
+  taskUuidDisp.textContent = '';
+
+  setFormEnabled(false);
+  btnSubmit.disabled = true;
+  showStatus('info', '⏳ OCR 识别中，请稍候...');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const resp = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}` },
+      body: formData,
+    });
+    const json = await resp.json();
+
+    if (resp.ok && json.code === 0) {
+      const d = json.data;
+      currentTaskUuid = d.uuid;
+      fields.applicant.value    = d.applicant || '';
+      fields.expense_type.value = d.expense_type || '';
+      fields.merchant.value     = d.merchant || '';
+      fields.total_amount.value = d.total_amount ?? '';
+      fields.head_count.value   = d.head_count ?? 1;
+
+      originalOcrData = {
+        applicant:    d.applicant || '',
+        expense_type: d.expense_type || '',
+        merchant:     d.merchant || '',
+        total_amount: d.total_amount ?? '',
+        head_count:   d.head_count ?? 1,
+      };
+
+      if (d.ocr_raw_text) { rawText.textContent = d.ocr_raw_text; rawToggle.style.display = 'block'; }
+      taskUuidDisp.textContent = `任务 ID: ${d.uuid}`;
+      taskUuidDisp.classList.add('show');
+
+      if (d.total_amount === null || d.total_amount === undefined) {
+        showStatus('error', '⚠️ 金额识别失败，请手动输入后提交');
+        fields.total_amount.placeholder = '请手动输入金额';
+      } else {
+        showStatus('success', '✅ OCR 识别完成，请核对并修改，确认后点击提交');
+      }
+      setFormEnabled(true);
+      btnSubmit.disabled = false;
+      attachModifyListeners();
+    } else {
+      currentTaskUuid = json.data?.uuid || null;
+      showStatus('error', `❌ 识别失败：${json.msg}`);
+      setFormEnabled(true);
+      if (json.data?.uuid) {
+        taskUuidDisp.textContent = `任务 ID: ${json.data.uuid}`;
+        taskUuidDisp.classList.add('show');
+        currentTaskUuid = json.data.uuid;
+        btnSubmit.disabled = false;
+      }
+    }
+  } catch (err) {
+    showStatus('error', `❌ 网络异常：${err.message}`);
+    setFormEnabled(true);
+  }
+}
+
+function attachModifyListeners() {
+  for (const [key, el] of Object.entries(fields)) {
+    el.addEventListener('input', () => {
+      const orig = String(originalOcrData[key] ?? '');
+      if (orig !== el.value) el.classList.add('modified');
+      else el.classList.remove('modified');
+    }, { once: false });
+  }
+}
+
+async function submitToDB() {
+  if (!currentTaskUuid) { showStatus('error', '请先上传图片'); return; }
+  const amount = parseFloat(fields.total_amount.value);
+  if (isNaN(amount) || amount <= 0) { showStatus('error', '金额识别失败，请手动输入有效的费用总额'); fields.total_amount.focus(); return; }
+  if (!fields.applicant.value.trim()) { showStatus('error', '请填写报销人'); fields.applicant.focus(); return; }
+  if (!fields.expense_type.value) { showStatus('error', '请选择报销类型'); fields.expense_type.focus(); return; }
+
+  btnSubmit.disabled = true;
+  spinnerSubmit.classList.add('show');
+  showStatus('info', '⏳ 正在提交到数据库...');
+
+  const body = {
+    applicant:    fields.applicant.value.trim(),
+    expense_type: fields.expense_type.value,
+    merchant:     fields.merchant.value.trim(),
+    total_amount: amount,
+    head_count:   parseInt(fields.head_count.value) || 1,
+  };
+
+  try {
+    const resp = await fetch(`/api/receipt/${currentTaskUuid}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json();
+    if (resp.ok && json.code === 0) {
+      originalOcrData = { ...body };
+      for (const el of Object.values(fields)) el.classList.remove('modified');
+      showStatus('success', '✅ 数据已成功保存到数据库！');
+    } else {
+      showStatus('error', `❌ 保存失败：${json.msg}`);
+    }
+  } catch (err) {
+    showStatus('error', `❌ 网络异常：${err.message}`);
+  } finally {
+    btnSubmit.disabled = false;
+    spinnerSubmit.classList.remove('show');
+  }
+}
+
+function setFormEnabled(enabled) {
+  for (const el of Object.values(fields)) el.disabled = !enabled;
+}
+
+function showStatus(type, msg) {
+  statusMsg.className = `status-msg show ${type}`;
+  statusMsg.textContent = msg;
+}
+function hideStatus() { statusMsg.className = 'status-msg'; statusMsg.textContent = ''; }
+
+function toggleRawText() {
+  rawText.classList.toggle('show');
+  rawToggle.textContent = rawText.classList.contains('show') ? '▾ 收起 OCR 原始文本' : '▸ 查看 OCR 原始文本';
+}
+function hideRaw() { rawText.classList.remove('show'); rawText.textContent = ''; rawToggle.style.display = 'none'; rawToggle.textContent = '▸ 查看 OCR 原始文本'; }
+
+function resetForm() {
+  currentTaskUuid = null; originalOcrData = {};
+  for (const el of Object.values(fields)) { el.value = ''; el.classList.remove('modified'); }
+  fields.head_count.value = '1';
+  previewImg.src = ''; previewRow.classList.remove('show'); defaultState.style.display = '';
+  uploadZone.classList.remove('has-image'); fileInput.value = '';
+  formCard.style.display = 'none'; hideStatus(); hideRaw();
+  taskUuidDisp.classList.remove('show'); taskUuidDisp.textContent = '';
+  btnSubmit.disabled = true; setFormEnabled(false);
+}
+</script>
+</body>
+</html>
