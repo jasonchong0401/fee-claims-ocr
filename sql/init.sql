@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS receipts (
     status      TINYINT      NOT NULL DEFAULT 0 COMMENT '0:待处理, 1:已提取, -1:提取失败',
     error_message TEXT       DEFAULT NULL COMMENT '失败原因',
 
+    employee_id     VARCHAR(50)  DEFAULT NULL COMMENT '提交人工号',
+    approval_status VARCHAR(20)  NOT NULL DEFAULT 'pending' COMMENT '审批状态: pending/approved/rejected/pending_update',
+    review_comment TEXT         DEFAULT NULL COMMENT '审批意见',
+
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
@@ -33,7 +37,9 @@ CREATE TABLE IF NOT EXISTS receipts (
     INDEX idx_applicant (applicant),
     INDEX idx_expense_type (expense_type),
     INDEX idx_status (status),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_employee_id (employee_id),
+    INDEX idx_approval_status (approval_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='费用报销记录表';
 
 -- ============================================================

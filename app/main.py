@@ -26,13 +26,14 @@ from sqlalchemy.exc import OperationalError
 from config import settings, BASE_DIR
 from app.database import engine, SessionLocal, get_db
 from app.models import Base, Receipt, Employee
-from app.auth import get_current_user, hash_password, verify_password, create_access_token
+from app.auth import get_current_user, require_admin, hash_password, verify_password, create_access_token
 from app.schemas import (
     UploadResponse,
     ReceiptOut,
     ReceiptDetailResponse,
     ReceiptListResponse,
     ReceiptUpdate,
+    ApprovalUpdate,
     FileValidationError,
     LoginRequest,
     LoginResponse,
@@ -197,7 +198,11 @@ async def upload_receipt(
     validate_upload_file(file)
 
     # 1. 先创建记录获取 UUID
-    receipt = Receipt(status=0)
+    receipt = Receipt(
+        status=0,
+        employee_id=current_user.employee_id,
+        approval_status="pending",
+    )
     db.add(receipt)
     db.commit()
     db.refresh(receipt)
@@ -364,6 +369,121 @@ async def list_receipts(
         code=0, msg="查询成功",
         data=[ReceiptOut.model_validate(r.to_dict()) for r in records],
         total=total, page=page, page_size=page_size,
+    )
+
+
+# ══════════════════════════════════════════════════════════
+#  我的报销（需登录）
+# ══════════════════════════════════════════════════════════
+
+@app.get("/admin/review", response_class=HTMLResponse)
+async def admin_review_page():
+    """审批页面（需管理员权限，前端检查 token + role）"""
+    html_path = BASE_DIR / "static" / "admin-review.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Review page not found</h1>", status_code=404)
+
+
+@app.get("/my-receipts", response_class=HTMLResponse)
+async def my_receipts_page():
+    """我的报销页面（需登录，前端检查 token）"""
+    html_path = BASE_DIR / "static" / "my-receipts.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>My Receipts page not found</h1>", status_code=404)
+
+
+@app.get(
+    "/api/my-receipts",
+    response_model=ReceiptListResponse,
+    summary="查询当前用户的报销记录",
+)
+async def list_my_receipts(
+    date: Optional[str] = Query(None, description="日期筛选 YYYY-MM-DD"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Employee = Depends(get_current_user),
+):
+    """当前登录用户查看自己提交的报销单列表，支持按日期搜索。"""
+    query = db.query(Receipt).filter(
+        Receipt.employee_id == current_user.employee_id
+    )
+    if date:
+        query = query.filter(Receipt.created_at >= f"{date} 00:00:00")
+        query = query.filter(Receipt.created_at <= f"{date} 23:59:59")
+
+    total = query.count()
+    records = (
+        query.order_by(desc(Receipt.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return ReceiptListResponse(
+        code=0, msg="查询成功",
+        data=[ReceiptOut.model_validate(r.to_dict()) for r in records],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@app.get(
+    "/api/admin/review-queue",
+    response_model=ReceiptListResponse,
+    summary="审批队列（管理员）",
+)
+async def admin_review_queue(
+    approval_status: Optional[str] = Query("pending", description="按审批状态筛选"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    admin: Employee = Depends(require_admin),
+):
+    """管理员查看待审批 / 已审批的报销单列表。"""
+    query = db.query(Receipt)
+    if approval_status:
+        query = query.filter(Receipt.approval_status == approval_status)
+
+    total = query.count()
+    records = (
+        query.order_by(desc(Receipt.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return ReceiptListResponse(
+        code=0, msg="查询成功",
+        data=[ReceiptOut.model_validate(r.to_dict()) for r in records],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@app.put(
+    "/api/receipt/{task_id}/approve",
+    response_model=ReceiptDetailResponse,
+    summary="审批报销单（管理员）",
+)
+async def approve_receipt(
+    task_id: str,
+    body: ApprovalUpdate,
+    db: Session = Depends(get_db),
+    admin: Employee = Depends(require_admin),
+):
+    """管理员审批报销单：通过 / 拒绝 / 要求修改。"""
+    receipt = db.query(Receipt).filter(Receipt.uuid == task_id).first()
+    if not receipt:
+        return JSONResponse(
+            status_code=404, content={"code": 404, "msg": f"记录不存在: {task_id}"},
+        )
+    receipt.approval_status = body.approval_status
+    if body.comment:
+        receipt.review_comment = body.comment
+    db.commit()
+    db.refresh(receipt)
+    return ReceiptDetailResponse(
+        code=0, msg="审批完成",
+        data=ReceiptOut.model_validate(receipt.to_dict()),
     )
 
 

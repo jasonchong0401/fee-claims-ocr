@@ -114,6 +114,13 @@ class Receipt(Base):
     )
     error_message = Column(Text, nullable=True, comment="失败原因")
 
+    employee_id = Column(String(50), nullable=True, comment="提交人工号")
+    approval_status = Column(
+        String(20), default="pending", nullable=False,
+        comment="审批状态: pending/approved/rejected/pending_update",
+    )
+    review_comment = Column(Text, nullable=True, comment="审批意见")
+
     created_at = Column(
         DateTime, default=datetime.utcnow, nullable=False, comment="创建时间"
     )
@@ -132,6 +139,8 @@ class Receipt(Base):
         Index("idx_status", "status"),
         Index("idx_created_at", "created_at"),
         Index("idx_uuid", "uuid", unique=True),
+        Index("idx_employee_id", "employee_id"),
+        Index("idx_approval_status", "approval_status"),
     )
 
     def to_dict(self) -> dict:
@@ -147,6 +156,9 @@ class Receipt(Base):
             "ocr_raw_text": self.ocr_raw_text,
             "status": self.status,
             "error_message": self.error_message,
+            "employee_id": self.employee_id,
+            "approval_status": self.approval_status,
+            "review_comment": self.review_comment,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

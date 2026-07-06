@@ -39,6 +39,19 @@
     color: #fff; font-size: 14px;
   }
 
+  .top-bar .nav-links {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .top-bar .nav-link {
+    padding: 6px 14px;
+    border-radius: 7px;
+    font-size: 13px; font-weight: 500;
+    color: #475569; text-decoration: none;
+    transition: all .15s;
+  }
+  .top-bar .nav-link:hover { background: #f1f5f9; color: #1e293b; }
+  .top-bar .nav-link.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+
   .top-bar .right-section {
     display: flex; align-items: center; gap: 6px;
     position: relative;
@@ -311,8 +324,15 @@
 
 <!-- ═══════════ Top Nav Bar ═══════════ -->
 <div class="top-bar">
-  <div class="brand">
-    <span class="dot">📄</span> 费用报销系统
+  <div style="display:flex;align-items:center;gap:20px;">
+    <div class="brand">
+      <span class="dot">📄</span> 费用报销系统
+    </div>
+    <div class="nav-links">
+      <a class="nav-link active" href="/upload">📷 上传票据</a>
+      <a class="nav-link" href="/my-receipts">📋 我的报销</a>
+      <a class="nav-link" id="navAdminReview" href="/admin/review" style="display:none;">✅ 审批管理</a>
+    </div>
   </div>
   <div class="right-section">
     <span class="user-name" id="displayUsername">-</span>
@@ -453,6 +473,12 @@ const tag = document.getElementById('displayRole');
 tag.textContent = ROLE || '';
 tag.className = 'role-tag ' + (ROLE === 'admin' ? 'admin' : 'user');
 
+// Show admin link for admin users
+if (ROLE === 'admin') {
+  const a = document.getElementById('navAdminReview');
+  if (a) a.style.display = '';
+}
+
 // ── Dropdown ──
 function toggleDropdown() {
   document.getElementById('dropdown').classList.toggle('show');
@@ -550,6 +576,7 @@ async function changePassword() {
 function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('username');
+  localStorage.removeItem('employee_id');
   localStorage.removeItem('role');
   window.location.href = '/';
 }

@@ -29,6 +29,9 @@ class ReceiptOut(BaseModel):
     ocr_raw_text: Optional[str] = None
     status: int = 0
     error_message: Optional[str] = None
+    employee_id: Optional[str] = None
+    approval_status: str = "pending"
+    review_comment: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -56,6 +59,12 @@ class ReceiptUpdate(BaseModel):
     merchant: Optional[str] = None
     total_amount: Optional[float] = None
     head_count: Optional[int] = None
+
+
+class ApprovalUpdate(BaseModel):
+    """管理员审批操作。"""
+    approval_status: str = Field(..., pattern="^(approved|rejected|pending_update)$")
+    comment: Optional[str] = Field(default=None, max_length=500)
 
 
 class ErrorResponse(BaseModel):

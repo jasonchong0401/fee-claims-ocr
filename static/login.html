@@ -158,6 +158,7 @@ async function doLogin() {
       // 存储 token 和用户信息
       localStorage.setItem('token', json.data.access_token);
       localStorage.setItem('username', json.data.username);
+      localStorage.setItem('employee_id', json.data.employee_id || '');
       localStorage.setItem('role', json.data.role);
 
       // 跳转到上传页面
