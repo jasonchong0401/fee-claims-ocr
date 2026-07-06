@@ -488,6 +488,10 @@ async def approve_receipt(
 
 
 # ── 入口 ────────────────────────────────────────────────
+
+# Mount static assets (CSS, JS) — after all routes so routes take priority
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
 if __name__ == "__main__":
     import uvicorn
     logger.info(f"启动服务: http://{settings.HOST}:{settings.PORT}")
