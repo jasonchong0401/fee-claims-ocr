@@ -2,15 +2,59 @@
 字段提取器 —— 从 OCR 原始文本中提取结构化字段。
 
 支持中英文发票（中文优先，英文兜底）。
+支持布局标注文本（[HEADER]/[BODY]/[FOOTER]/[LOW-CONF]）。
 
 设计要点:
   - 每行可能是独立 OCR 检测框 → key 和 value 可能在不同行
   - OCR 会有字符识别错误（如 人→入，¥→半）→ 模式需容错
   - 金额优先匹配"合计/总计/Total"，避免选中子项金额
+  - 布局标注行 [HEADER] 等不会被当作商户名或其他字段值
 """
 
 import re
 from typing import Optional
+
+
+# ══════════════════════════════════════════════════════════
+#  布局标签处理
+# ══════════════════════════════════════════════════════════
+
+_LAYOUT_TAG = re.compile(r"^\[(?:HEADER|BODY|FOOTER|LOW-CONF[^\]]*)\]$")
+_LOW_CONF_PREFIX = re.compile(r"\[LOW-CONF:[^\]]+\]\s*")
+
+
+def _clean_line(line: str) -> str:
+    """去掉行首的 [LOW-CONF:XX%] 前缀，返回清理后的文本。"""
+    return _LOW_CONF_PREFIX.sub("", line).strip()
+
+
+def _is_layout_tag(line: str) -> bool:
+    """判断该行是否仅为布局标签（[HEADER] 等）。"""
+    return bool(_LAYOUT_TAG.match(line.strip()))
+
+
+def _non_tag_lines(text: str) -> list[str]:
+    """返回去掉布局标签行后的所有有效行。"""
+    return [
+        _clean_line(l) for l in text.split("\n")
+        if not _is_layout_tag(l) and _clean_line(l)
+    ]
+
+
+def _clean_text(text: str) -> str:
+    """清理 OCR 文本：去除布局标注行和 [LOW-CONF] 前缀。"""
+    return "\n".join(_non_tag_lines(text))
+
+
+# ── 清理后的文本缓存（避免重复清理） ──
+_clean_cache: dict[str, str] = {}
+
+
+def _get_clean(text: str) -> str:
+    """获取清理后的文本（带缓存）。"""
+    if text not in _clean_cache:
+        _clean_cache[text] = _clean_text(text)
+    return _clean_cache[text]
 
 
 # ══════════════════════════════════════════════════════════
@@ -28,8 +72,10 @@ _AMOUNT_PATTERNS_PRIORITY = [
     # 简写 Total / AMOUNT: / Total $xx.xx（无冒号）
     re.compile(r"(?:^|\n)\s*(?:TOTAL|AMOUNT)\s*[：:]\s*[$€£¥]?\s*(\d[\d,]*\.?\d{0,2})", re.IGNORECASE | re.MULTILINE),
     re.compile(r"\bTotal\s+[$€£¥]?\s*(\d[\d,]*\.\d{2})", re.IGNORECASE),  # "Total $8.80"
-    # 中文 ¥ 符号在行尾的合计（仅当无子项 $ 符号干扰时）
-    re.compile(r"[半¥￥]\s*(\d[\d,]*\.\d{2})\s*$", re.MULTILINE),
+    # £/€/¥/$ 结尾的行（仅中文符号以避免英文子项金额干扰）
+    re.compile(r"[半¥￥]\s*(\d[\d\s,]*\.?\d{0,2})\s*$", re.MULTILINE),
+    # OCR 容错：合计→合针/合it/合汁，总计→总针，应付→应村
+    re.compile(r"(?:合[针汁计it]{1,3}|总[针计it]{1,3}|应[付村时]{1,2})\s*[：:]\s*[半¥￥$€£]?\s*(\d[\d\s,]*\.?\d{0,2})"),
 ]
 
 # 兜底：任意货币符号金额（取最大的一个，避免子项金额）
@@ -43,7 +89,9 @@ def extract_amount(text: str) -> Optional[float]:
         m = pat.search(text)
         if m:
             try:
-                return float(m.group(1).replace(",", ""))
+                # 修正 OCR 常见错误：空格替代小数点 "200 00" → 200.00
+                val = m.group(1).replace(",", "").replace(" ", ".")
+                return float(val)
             except ValueError:
                 continue
 
@@ -51,7 +99,8 @@ def extract_amount(text: str) -> Optional[float]:
     amounts = []
     for m in _FALLBACK_AMOUNT.finditer(text):
         try:
-            amounts.append(float(m.group(1).replace(",", "")))
+            val = m.group(1).replace(",", "").replace(" ", ".")
+            amounts.append(float(val))
         except ValueError:
             pass
     if amounts:
@@ -85,6 +134,9 @@ def extract_applicant(text: str) -> Optional[str]:
         m = pat.search(text)
         if m:
             val = m.group(1).strip()
+            # 修复 OCR 伪影：去除常见错误字符
+            val = re.sub(r"[=\-_|/\\]", "", val)
+            val = val.strip()
             # 过滤明显误识别（纯数字、货币符号开头）
             if 2 <= len(val) <= 30 and not re.match(r"^[\d\s.,:：$€£¥半]+$", val):
                 return val
@@ -312,14 +364,15 @@ def extract_tax(text: str) -> Optional[float]:
 # ══════════════════════════════════════════════════════════
 
 def extract_all(text: str) -> dict:
-    """一次性提取所有字段，返回 dict。"""
+    """一次性提取所有字段，返回 dict。自动去除布局标签。"""
+    clean = _get_clean(text)
     return {
-        "applicant": extract_applicant(text),
-        "expense_type": extract_expense_type(text),
-        "merchant": extract_merchant(text),
-        "total_amount": extract_amount(text),
-        "head_count": extract_head_count(text),
-        "invoice_date": extract_date(text),
-        "currency": extract_currency(text),
-        "tax_amount": extract_tax(text),
+        "applicant": extract_applicant(clean),
+        "expense_type": extract_expense_type(clean),
+        "merchant": extract_merchant(clean),
+        "total_amount": extract_amount(clean),
+        "head_count": extract_head_count(clean),
+        "invoice_date": extract_date(clean),
+        "currency": extract_currency(text),   # currency 用原始文本检测符号
+        "tax_amount": extract_tax(clean),
     }
