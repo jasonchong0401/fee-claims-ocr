@@ -3,9 +3,13 @@ EasyOCR 实现 —— 基于 PyTorch，无需 PaddlePaddle/MKL。
 
 EasyOCR 支持 80+ 语言，中英文混合识别效果好，
 是 PaddleOCR 不可用时的首选替代方案。
+
+语言检测：识别后自动检测文本语言（中文/英文/混合），
+便于后续 Prompt 和正则选择合适的策略。
 """
 
 import logging
+import re
 from typing import Optional
 
 from app.ocr.base import BaseOCRService, OCRResult
@@ -83,10 +87,11 @@ class EasyOCRService(BaseOCRService):
 
         # ── 2. 提取结构化字段 ──
         fields = extract_all(raw_text)
+        lang = _detect_language(raw_text)
         logger.info(
-            "EasyOCR 提取: applicant=%s, type=%s, merchant=%s, amount=%s",
-            fields["applicant"], fields["expense_type"],
-            fields["merchant"], fields["total_amount"],
+            "EasyOCR 提取 (lang=%s): applicant=%s, type=%s, merchant=%s, amount=%s, date=%s",
+            lang, fields["applicant"], fields["expense_type"],
+            fields["merchant"], fields["total_amount"], fields.get("invoice_date"),
         )
 
         return OCRResult(
@@ -96,6 +101,9 @@ class EasyOCRService(BaseOCRService):
             total_amount=fields["total_amount"],
             head_count=fields["head_count"],
             raw_text=raw_text,
+            invoice_date=fields.get("invoice_date"),
+            currency=fields.get("currency"),
+            tax_amount=fields.get("tax_amount"),
         )
 
     def _run_ocr(self, image_path: str) -> str:
@@ -122,3 +130,32 @@ class EasyOCRService(BaseOCRService):
         raw_text = "\n".join(lines)
         logger.info("EasyOCR 识别到 %d 行文本 (共 %d 字符)", len(lines), len(raw_text))
         return raw_text
+
+
+def _detect_language(text: str) -> str:
+    """
+    检测 OCR 文本的主导语言。
+
+    Returns:
+        "zh"  — 中文为主 (>30% CJK 字符)
+        "en"  — 英文为主 (<10% CJK 字符)
+        "mix" — 中英混合
+    """
+    if not text.strip():
+        return "en"
+
+    cjk = len(re.findall(r"[一-鿿㐀-䶿]", text))
+    latin = len(re.findall(r"[a-zA-Z]", text))
+    total = cjk + latin
+
+    if total == 0:
+        return "en"
+
+    cjk_ratio = cjk / total if total > 0 else 0
+
+    if cjk_ratio > 0.3:
+        return "zh"
+    elif cjk_ratio > 0.1:
+        return "mix"
+    else:
+        return "en"

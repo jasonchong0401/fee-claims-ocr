@@ -48,9 +48,11 @@ class DeepSeekOCRService(BaseOCRService):
         fields = extract_hybrid(raw_text)
 
         logger.info(
-            "DeepSeekOCR 最终结果: applicant=%s, type=%s, merchant=%s, amount=%s",
+            "DeepSeekOCR 最终结果: applicant=%s, type=%s, merchant=%s, amount=%s, date=%s, items=%d",
             fields["applicant"], fields["expense_type"],
             fields["merchant"], fields["total_amount"],
+            fields.get("invoice_date"),
+            len(fields.get("line_items") or []),
         )
 
         return OCRResult(
@@ -60,4 +62,9 @@ class DeepSeekOCRService(BaseOCRService):
             total_amount=fields["total_amount"],
             head_count=fields.get("head_count", 1),
             raw_text=raw_text,
+            invoice_date=fields.get("invoice_date"),
+            currency=fields.get("currency"),
+            tax_amount=fields.get("tax_amount"),
+            line_items=fields.get("line_items"),
+            reasoning=fields.get("reasoning"),
         )

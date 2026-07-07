@@ -19,6 +19,12 @@ class OCRResult:
     total_amount: Optional[float] = None
     head_count: int = 1
     raw_text: str = ""
+    # ── 新增字段 ──
+    invoice_date: Optional[str] = None       # 发票日期
+    currency: Optional[str] = None           # 货币符号 CNY/USD/EUR…
+    tax_amount: Optional[float] = None       # 税额
+    line_items: Optional[list] = None        # 商品明细 [{name, qty, unit_price}]
+    reasoning: Optional[str] = None          # LLM 推理过程
 
     def to_dict(self) -> dict:
         return asdict(self)
